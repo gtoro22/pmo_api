@@ -1,0 +1,29 @@
+# Secretos y configuracion local
+.env
+.env.*
+!.env.example
+
+# Salidas generadas
+output/
+logs/
+*.xlsx
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Editores / SO
+.idea/
+.vscode/
+.DS_Store

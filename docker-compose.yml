@@ -1,0 +1,16 @@
+services:
+  tracking-goals:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: tracking-goals-invoker:1.0.0
+    container_name: tracking-goals-invoker
+    # Los secretos y el endpoint base se toman del archivo .env
+    env_file:
+      - .env
+    volumes:
+      - ./output:/app/output
+      - ./logs:/app/logs
+    # Sobreescribible desde la linea de comandos:
+    #   docker compose run --rm tracking-goals --project 2026 --todas-las-paginas
+    command: ["--help"]
