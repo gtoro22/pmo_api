@@ -8,7 +8,7 @@ los parámetros del JSON de salida.
 ## Características
 
 - Arquitectura **DDD** por capas (dominio / aplicación / infraestructura / interfaces).
-- Ejecutable desde **CMD / terminal** (`tracking-goals` o `python -m tracking_goals`).
+- Ejecutable desde **CMD / terminal** con `python main.py`, sin instalar el proyecto ni usar venv.
 - **Docker** y **docker compose** listos para usar.
 - **Endpoint base y token en `.env`**; las rutas de la API viven en la capa de infraestructura.
 - **Log de inicio de proceso** en consola y archivo por ejecución.
@@ -20,6 +20,7 @@ los parámetros del JSON de salida.
 ## 1. Arquitectura (DDD)
 
 ```
+main.py                            # ◄ Punto de entrada: python main.py --project 2026
 src/tracking_goals/
 ├── domain/                        # Núcleo de negocio, sin dependencias externas
 │   ├── model/                     # Entidades y objetos de valor
@@ -110,32 +111,60 @@ AMAGI_API_TOKEN=su-bearer-token
 
 ## 3. Ejecución desde CMD / terminal
 
-Instalación:
+### Forma recomendada: `main.py`
 
-```bash
-python -m venv .venv
-.venv\Scripts\activate          # Windows (CMD/PowerShell)
-source .venv/bin/activate       # Linux / macOS
+Solo se instalan las tres librerías; **el proyecto no se instala como paquete y
+no requiere entorno virtual**:
 
+```bat
 pip install -r requirements.txt
-pip install -e .
+
+python main.py --project 2026 --identity 5555553333
 ```
 
-Uso:
-
-```bash
-:: Consulta de un usuario en un proyecto
-tracking-goals --project 2026 --identity 5555553333
-
+```bat
 :: Todas las páginas del proyecto, 100 usuarios por página
-tracking-goals --project 2026 --per-page 100 --todas-las-paginas
+python main.py --project 2026 --per-page 100 --todas-las-paginas
 
 :: Sincronización incremental + archivo de salida explícito
-tracking-goals --updated-since 2026-07-29T10:38:00-05:00 --salida C:\reportes\objetivos.xlsx
+python main.py --updated-since 2026-07-29T10:38:00-05:00 --salida C:\reportes\objetivos.xlsx
 
-:: Sin instalar el paquete
+:: Ver el detalle de cada petición HTTP
+python main.py --project 2026 --log-level DEBUG
+
+:: Ayuda
+python main.py --help
+```
+
+`main.py` agrega `src/` al path de importación y delega en
+`interfaces/cli/main.py`. Puede invocarse con ruta absoluta desde cualquier
+carpeta (`python C:\ruta\pmo_api\main.py --project 2026`); en ese caso el Excel
+y los logs se crean en el directorio actual, y el `.env` puede indicarse con
+`--env-file`.
+
+Si `python` no responde en Windows, usar el lanzador `py`:
+
+```bat
+py -m pip install -r requirements.txt
+py main.py --project 2026
+```
+
+### Alternativa: instalar el paquete
+
+Habilita el comando `tracking-goals` y la ejecución por módulo desde cualquier
+directorio:
+
+```bash
+pip install -e .
+
+tracking-goals --project 2026 --identity 5555553333
 python -m tracking_goals --project 2026
 ```
+
+> Si `tracking-goals` no se reconoce, la carpeta `Scripts` de Python no está en
+> el `PATH`. Se ubica con
+> `python -c "import sysconfig; print(sysconfig.get_path('scripts'))"`, o se
+> evita el problema usando `python main.py`.
 
 ### Argumentos
 
@@ -231,9 +260,10 @@ pip install -r requirements-dev.txt
 pytest -q
 ```
 
-34 pruebas cubren el mapeo del JSON del documento técnico, el aplanado, el
+35 pruebas cubren el mapeo del JSON del documento técnico, el aplanado, el
 criterio de consulta, la construcción del endpoint, el cliente HTTP (401, 400,
-JSON inválido, reintento ante 5xx), la exportación a Excel y el flujo del CLI.
+JSON inválido, reintento ante 5xx), la exportación a Excel y el flujo del CLI,
+incluida la ejecución de `main.py` sin el paquete instalado.
 
 ---
 

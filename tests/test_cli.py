@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -105,6 +107,22 @@ def test_error_del_servicio_devuelve_codigo_de_error(tmp_path):
 
     assert codigo == CODIGO_ERROR
     assert not (tmp_path / "x.xlsx").exists()
+
+
+def test_main_py_es_ejecutable_sin_instalar_el_paquete(tmp_path):
+    """`python main.py` debe funcionar sin el paquete en el path de importacion."""
+    raiz = Path(__file__).resolve().parents[1]
+    proceso = subprocess.run(
+        [sys.executable, str(raiz / "main.py"), "--help"],
+        capture_output=True,
+        text=True,
+        cwd=tmp_path,
+        env={"PATH": "", "PYTHONPATH": ""},
+    )
+
+    assert proceso.returncode == 0, proceso.stderr
+    assert "tracking-goals" in proceso.stdout
+    assert "--todas-las-paginas" in proceso.stdout
 
 
 def test_falta_de_configuracion_devuelve_error(tmp_path, capsys):
