@@ -13,6 +13,9 @@ class Evaluacion:
 
     `total_perspectivas` y `total_objetivos` los entrega el servicio; el dominio
     los conserva tal cual y no los recalcula (ver recomendaciones del contrato).
+
+    `evaluador` llega como nombre en texto libre: el servicio no expone
+    identificacion, correo, area ni cargo del evaluador.
     """
 
     id: int
@@ -20,6 +23,10 @@ class Evaluacion:
     nombre: str | None
     total_perspectivas: int | None
     total_objetivos: int | None
+    inicio: str | None = None
+    fin: str | None = None
+    evaluador: str | None = None
+    estado_evaluacion: str | None = None
     perspectivas: tuple[Perspectiva, ...] = field(default=())
 
     @property
