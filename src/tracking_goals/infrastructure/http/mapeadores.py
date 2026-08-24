@@ -36,6 +36,12 @@ class MapeadorRespuesta:
             identificacion=_texto(datos.get("identificacion")),
             nombres=_texto(datos.get("nombres")),
             apellidos=_texto(datos.get("apellidos")),
+            cargo=_texto(datos.get("cargo")),
+            nivel_cargo=_texto(datos.get("nivel_cargo")),
+            area=_texto(datos.get("area")),
+            grupo=_texto(datos.get("grupo")),
+            localizacion=_texto(datos.get("localizacion")),
+            unidad_negocio=_texto(datos.get("unidad_negocio")),
             evaluaciones=tuple(self._a_evaluacion(item) for item in evaluaciones),
         )
 
@@ -48,6 +54,10 @@ class MapeadorRespuesta:
             nombre=_texto(datos.get("nombre")),
             total_perspectivas=_entero_opcional(datos.get("total_perspectivas")),
             total_objetivos=_entero_opcional(datos.get("total_objetivos")),
+            inicio=_texto(datos.get("inicio")),
+            fin=_texto(datos.get("fin")),
+            evaluador=_texto(datos.get("evaluador")),
+            estado_evaluacion=_texto(datos.get("estado_evaluacion")),
             perspectivas=tuple(self._a_perspectiva(item) for item in perspectivas),
         )
 
@@ -57,6 +67,8 @@ class MapeadorRespuesta:
         return Perspectiva(
             id=_entero(datos.get("id")),
             nombre=_texto(datos.get("nombre")) or "",
+            peso=_decimal_opcional(datos.get("peso")),
+            cumplimiento=_decimal_opcional(datos.get("cumplimiento")),
             objetivos=tuple(self._a_objetivo(item) for item in objetivos),
         )
 
@@ -72,6 +84,14 @@ class MapeadorRespuesta:
             indicador=_texto(datos.get("indicador")),
             resultado=_decimal_opcional(datos.get("resultado")),
             cumplimiento=_decimal_opcional(datos.get("cumplimiento")),
+            objetivo_estrategico=_texto(datos.get("objetivo_estrategico")),
+            indicador_medicion=_texto(datos.get("indicador_medicion")),
+            peso=_decimal_opcional(datos.get("peso")),
+            minimo=_decimal_opcional(datos.get("minimo")),
+            sobresaliente=_decimal_opcional(datos.get("sobresaliente")),
+            periodo=_texto(datos.get("periodo")),
+            fecha_limite=_texto(datos.get("fecha_limite")),
+            estado_seguimientos=_texto(datos.get("estado_seguimientos")),
         )
 
     @staticmethod

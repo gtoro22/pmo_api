@@ -215,15 +215,20 @@ La imagen corre con un usuario sin privilegios (`invoker`, uid 1000).
 ## 5. Salida en Excel
 
 Una fila por objetivo, con la jerarquía repetida y la sección `meta` incorporada
-en cada fila (29 columnas):
+en cada fila (49 columnas):
 
 | Bloque | Columnas |
 |--------|----------|
-| Usuario | `usuario_id`, `identificacion`, `nombres`, `apellidos`, `nombre_completo` |
-| Evaluación | `evaluacion_id`, `proyecto`, `evaluacion_nombre`, `total_perspectivas`, `total_objetivos` |
-| Perspectiva | `perspectiva_id`, `perspectiva_nombre` |
-| Objetivo | `objetivo_id`, `objetivo`, `meta`, `unidad_medida`, `tipo_calculo`, `tipo_indicador`, `indicador`, `resultado`, `cumplimiento` |
+| Usuario evaluado | `usuario_id`, `identificacion`, `nombres`, `apellidos`, `nombre_completo`, `cargo`, `nivel_cargo`, `area`, `grupo`, `localizacion`, `unidad_negocio` |
+| Evaluación | `evaluacion_id`, `proyecto`, `evaluacion_nombre`, `evaluacion_inicio`, `evaluacion_fin`, `evaluador`, `estado_evaluacion`, `total_perspectivas`, `total_objetivos` |
+| Perspectiva | `perspectiva_id`, `perspectiva_nombre`, `perspectiva_peso`, `perspectiva_cumplimiento` |
+| Objetivo | `objetivo_id`, `objetivo`, `objetivo_estrategico`, `indicador_medicion`, `indicador`, `objetivo_peso`, `meta`, `minimo`, `sobresaliente`, `unidad_medida`, `tipo_calculo`, `tipo_indicador`, `periodo`, `resultado`, `cumplimiento`, `fecha_limite`, `estado_seguimientos` |
 | Metadatos | `meta_page`, `meta_per_page`, `meta_total_users`, `meta_total_pages`, `meta_updated_since`, `meta_server_time`, `meta_next_updated_since`, `status` |
+
+`peso` y `cumplimiento` existen en dos niveles distintos del JSON, por eso los de
+perspectiva van prefijados (`perspectiva_peso`, `perspectiva_cumplimiento`) y el
+del objetivo se llama `objetivo_peso`. Los campos propios del objetivo (`meta`,
+`resultado`, `cumplimiento`) van sin prefijo porque el objetivo es el grano de la fila.
 
 Criterios aplicados según el documento técnico:
 
@@ -233,6 +238,29 @@ Criterios aplicados según el documento técnico:
   evaluación sin perspectivas o una perspectiva sin objetivos generan igualmente
   una fila con los niveles inferiores en blanco (útil para auditoría).
 - `total_perspectivas` y `total_objetivos` se toman del servicio, no se recalculan.
+
+### Diferencias entre el documento técnico y el servicio real
+
+El documento técnico v1.0 describe menos campos de los que el servicio entrega.
+El invocador mapea **ambos** contratos, así que funciona con cualquiera de los dos:
+
+| Nivel | Campos que llegan y no están documentados |
+|-------|-------------------------------------------|
+| Usuario | `cargo`, `nivel_cargo`, `area`, `grupo`, `localizacion`, `unidad_negocio` |
+| Evaluación | `inicio`, `fin`, `evaluador`, `estado_evaluacion` |
+| Perspectiva | `peso`, `cumplimiento` |
+| Objetivo | `objetivo_estrategico`, `indicador_medicion`, `peso`, `minimo`, `sobresaliente`, `periodo`, `fecha_limite`, `estado_seguimientos` |
+
+`indicador` figura en el documento pero el servicio ya no lo envía; en su lugar
+llega `indicador_medicion`. La columna `indicador` se conserva para no perder el
+dato si el servicio vuelve a exponerlo.
+
+Dos advertencias sobre nombres parecidos:
+
+- `status` (raíz) vale `"ok"` y describe si la **consulta** salió bien. El estado
+  de la evaluación es `estado_evaluacion`.
+- `evaluador` llega como nombre en texto libre. El servicio no expone
+  identificación, correo, área ni cargo del evaluador, ni el correo del evaluado.
 
 ---
 
@@ -260,7 +288,7 @@ pip install -r requirements-dev.txt
 pytest -q
 ```
 
-35 pruebas cubren el mapeo del JSON del documento técnico, el aplanado, el
+40 pruebas cubren el mapeo del JSON del documento técnico, el aplanado, el
 criterio de consulta, la construcción del endpoint, el cliente HTTP (401, 400,
 JSON inválido, reintento ante 5xx), la exportación a Excel y el flujo del CLI,
 incluida la ejecución de `main.py` sin el paquete instalado.

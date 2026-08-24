@@ -38,6 +38,12 @@ class AplanadorObjetivos:
             nombres=usuario.nombres,
             apellidos=usuario.apellidos,
             nombre_completo=usuario.nombre_completo,
+            cargo=usuario.cargo,
+            nivel_cargo=usuario.nivel_cargo,
+            area=usuario.area,
+            grupo=usuario.grupo,
+            localizacion=usuario.localizacion,
+            unidad_negocio=usuario.unidad_negocio,
         )
         if not usuario.evaluaciones:
             return [fila_usuario]
@@ -55,6 +61,10 @@ class AplanadorObjetivos:
             evaluacion_id=evaluacion.id,
             proyecto=evaluacion.proyecto,
             evaluacion_nombre=evaluacion.nombre,
+            evaluacion_inicio=evaluacion.inicio,
+            evaluacion_fin=evaluacion.fin,
+            evaluador=evaluacion.evaluador,
+            estado_evaluacion=evaluacion.estado_evaluacion,
             total_perspectivas=evaluacion.total_perspectivas,
             total_objetivos=evaluacion.total_objetivos,
         )
@@ -67,6 +77,8 @@ class AplanadorObjetivos:
                 fila_evaluacion,
                 perspectiva_id=perspectiva.id,
                 perspectiva_nombre=perspectiva.nombre,
+                perspectiva_peso=perspectiva.peso,
+                perspectiva_cumplimiento=perspectiva.cumplimiento,
             )
             if not perspectiva.objetivos:
                 filas.append(fila_perspectiva)
@@ -77,13 +89,21 @@ class AplanadorObjetivos:
                         fila_perspectiva,
                         objetivo_id=objetivo.id,
                         objetivo=objetivo.objetivo,
+                        objetivo_estrategico=objetivo.objetivo_estrategico,
+                        indicador_medicion=objetivo.indicador_medicion,
+                        indicador=objetivo.indicador,
+                        objetivo_peso=objetivo.peso,
                         meta=objetivo.meta,
+                        minimo=objetivo.minimo,
+                        sobresaliente=objetivo.sobresaliente,
                         unidad_medida=objetivo.unidad_medida,
                         tipo_calculo=objetivo.tipo_calculo,
                         tipo_indicador=objetivo.tipo_indicador,
-                        indicador=objetivo.indicador,
+                        periodo=objetivo.periodo,
                         resultado=objetivo.resultado,
                         cumplimiento=objetivo.cumplimiento,
+                        fecha_limite=objetivo.fecha_limite,
+                        estado_seguimientos=objetivo.estado_seguimientos,
                     )
                 )
         return filas
