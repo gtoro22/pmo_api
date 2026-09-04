@@ -503,16 +503,34 @@ python main.py --project 2026 --enviar
 ### Seguridad
 
 `ENVIO_VERIFICAR_HOST_KEY=true` (el valor por defecto) exige que la llave del
-servidor SFTP esté en `known_hosts`; si no está, la conexión se rechaza. Para
-registrarla:
+servidor SFTP esté en `known_hosts`; si no está, la conexión se rechaza con:
 
-```bash
-ssh-keyscan -p 22 sftp.miempresa.co >> ~/.ssh/known_hosts
+```
+ErrorDeEnvio: Fallo de SSH/SFTP con 172.20.1.65:
+Server '[172.20.1.65]:4422' not found in known_hosts
 ```
 
-o apuntar `ENVIO_KNOWN_HOSTS` a un archivo propio. Ponerlo en `false` acepta
-cualquier llave y deja la conexión expuesta a suplantación del servidor: el log
-lo advierte en cada ejecución.
+Para registrarla, el proyecto trae una herramienta que toma el host y el puerto
+del `.env`:
+
+```bash
+python3 herramientas/registrar_host_key.py
+```
+
+Imprime el tipo de llave y su huella SHA256 —**contrástela con el administrador
+del servidor antes de confiar en ella**— y la guarda en el archivo indicado por
+`ENVIO_KNOWN_HOSTS`, o en `~/.ssh/known_hosts` si esa variable está vacía.
+Acepta `--host`, `--puerto` y `--salida` para casos puntuales.
+
+Equivale a `ssh-keyscan -p <puerto> <host> >> ~/.ssh/known_hosts`, pero usa
+paramiko, así que sirve en servidores sin el cliente de OpenSSH instalado.
+
+El puerto importa: OpenSSH identifica los servidores que no usan el 22 con el
+formato `[host]:puerto`, y una entrada registrada para el puerto 22 **no** sirve
+para el 4422. La herramienta lo maneja automáticamente.
+
+Poner `ENVIO_VERIFICAR_HOST_KEY=false` acepta cualquier llave y deja la conexión
+expuesta a suplantación del servidor; el log lo advierte en cada ejecución.
 
 El protocolo `ftp` no cifra nada — credenciales y archivo viajan en claro, y el
 log lo advierte. Prefiera `sftp` o `ftps`.
