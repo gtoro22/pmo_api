@@ -259,10 +259,52 @@ Programarlo cada día a las 6:00 con cron (`crontab -e`):
 0 6 * * * cd /ruta/a/pmo_api && /usr/bin/docker compose run --rm tracking-goals --todas-las-paginas >> logs/cron.log 2>&1
 ```
 
-### Servidor sin acceso a internet
+### Si el build falla con «Network is unreachable»
 
-Si el servidor no puede descargar la imagen base ni los paquetes, construya en
-una máquina que sí tenga salida y transfiera la imagen ya armada:
+```
+ERROR: Could not find a version that satisfies the requirement requests==2.32.3
+Failed to establish a new connection: [Errno 101] Network is unreachable
+```
+
+Significa que el **contenedor de build** no alcanza PyPI, aunque el host sí haya
+descargado la imagen base. Es habitual en redes corporativas donde la red bridge
+de Docker no tiene salida. Tres alternativas, de más simple a más robusta:
+
+**1. Construir usando la red del host**
+
+```bash
+docker build --network=host -t tracking-goals-invoker:1.0.0 .
+docker compose run --rm --no-build tracking-goals --todas-las-paginas
+```
+
+**2. Pasar el proxy corporativo al build**, si la salida es por proxy:
+
+```bash
+docker build \
+  --build-arg HTTP_PROXY=$HTTP_PROXY \
+  --build-arg HTTPS_PROXY=$HTTPS_PROXY \
+  -t tracking-goals-invoker:1.0.0 .
+```
+
+**3. Instalar desde wheels descargados en el host** (funciona siempre que el
+host alcance PyPI, sin importar la red del contenedor):
+
+```bash
+python3 -m venv .venv
+.venv/bin/pip download -r requirements.txt -d wheels
+
+docker compose -f docker-compose.offline.yml build
+docker compose -f docker-compose.offline.yml run --rm tracking-goals --todas-las-paginas
+```
+
+`Dockerfile.offline` instala con `--no-index --find-links=/wheels`, así que el
+build no intenta ninguna conexión. La carpeta `wheels/` pesa unos 8 MB y está en
+`.gitignore`: se regenera cuando cambien las dependencias.
+
+### Servidor sin acceso a internet en absoluto
+
+Si el host tampoco alcanza Docker Hub ni PyPI, construya en otra máquina y
+transfiera la imagen ya armada:
 
 ```bash
 # En la máquina con internet
@@ -275,6 +317,28 @@ gunzip -c tracking-goals.tar.gz | docker load
 # Ejecutar sin volver a construir (usa la imagen ya cargada)
 docker compose run --rm --no-build tracking-goals --todas-las-paginas
 ```
+
+### Alternativa sin Docker: entorno virtual
+
+En Debian/Ubuntu, `pip install` contra el Python del sistema falla con
+`externally-managed-environment` (PEP 668). **No hace falta sudo**: un entorno
+virtual lo resuelve y es la vía que recomienda el propio mensaje de error.
+
+```bash
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+
+.venv/bin/python main.py --todas-las-paginas
+```
+
+No es necesario activar el entorno: basta invocar `.venv/bin/python`. Para cron:
+
+```cron
+0 6 * * * cd /ruta/a/pmo_api && .venv/bin/python main.py --todas-las-paginas >> logs/cron.log 2>&1
+```
+
+> Si `python3 -m venv` falla por `ensurepip`, falta el paquete del sistema:
+> `sudo apt install python3-venv`.
 
 ### Actualizar a una versión nueva del código
 

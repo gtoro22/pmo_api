@@ -1,0 +1,26 @@
+# Variante para servidores cuyo contenedor de build no alcanza PyPI.
+# Requiere haber descargado antes los wheels en el host:
+#   python3 -m venv .venv && .venv/bin/pip download -r requirements.txt -d wheels
+#
+# Uso:
+#   docker compose -f docker-compose.offline.yml build
+#   docker compose -f docker-compose.offline.yml run --rm tracking-goals --todas-las-paginas
+
+services:
+  tracking-goals:
+    build:
+      context: .
+      dockerfile: Dockerfile.offline
+    image: tracking-goals-invoker:1.0.0
+    container_name: tracking-goals-invoker
+    env_file:
+      - .env
+    user: "${DOCKER_UID:-1000}:${DOCKER_GID:-1000}"
+    volumes:
+      - ./output:/app/output
+      - ./logs:/app/logs
+      # SFTP con verificacion de host key: montar el known_hosts y apuntar
+      # ENVIO_KNOWN_HOSTS=/app/.ssh/known_hosts en el .env
+      # - ./.ssh/known_hosts:/app/.ssh/known_hosts:ro
+      # - ./.ssh/id_ed25519:/app/.ssh/id_ed25519:ro
+    command: ["--help"]
