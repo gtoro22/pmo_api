@@ -2,9 +2,35 @@
 
 from __future__ import annotations
 
+import os
+
 import pytest
 
 from tracking_goals.infrastructure.config.settings import Settings
+
+PREFIJOS_CONFIGURACION = ("AMAGI_", "ENVIO_")
+VARIABLES_CONFIGURACION = ("LOG_LEVEL", "LOG_DIR", "OUTPUT_DIR")
+
+
+@pytest.fixture(autouse=True)
+def entorno_limpio():
+    """Aisla cada prueba de la configuracion que dejaron las anteriores.
+
+    `load_dotenv` escribe en `os.environ` y esos valores sobreviven a la prueba
+    que cargo el archivo, porque no los puso `monkeypatch`. Sin esta limpieza,
+    una prueba podia heredar el ENVIO_HOST de otra e intentar una conexion real.
+    """
+    previo = dict(os.environ)
+    _borrar_configuracion()
+    yield
+    os.environ.clear()
+    os.environ.update(previo)
+
+
+def _borrar_configuracion() -> None:
+    for clave in list(os.environ):
+        if clave.startswith(PREFIJOS_CONFIGURACION) or clave in VARIABLES_CONFIGURACION:
+            del os.environ[clave]
 
 
 @pytest.fixture

@@ -22,6 +22,7 @@ los parámetros del JSON de salida.
 
 ```
 main.py                            # ◄ Punto de entrada: python main.py --project 2026
+registrar_host_key.py              # ◄ Punto de entrada: registra la llave del SFTP
 src/tracking_goals/
 ├── domain/                        # Núcleo de negocio, sin dependencias externas
 │   ├── model/                     # Entidades y objetos de valor
@@ -62,13 +63,15 @@ src/tracking_goals/
 │   │   ├── fabrica.py                    #   elige el adaptador según el .env
 │   │   ├── transportador_sftp.py         #   SFTP (paramiko)
 │   │   ├── transportador_ftp.py          #   FTP y FTPS (ftplib)
-│   │   └── transportador_nulo.py         #   envío deshabilitado (Null Object)
+│   │   ├── transportador_nulo.py         #   envío deshabilitado (Null Object)
+│   │   └── registro_host_keys.py         #   consulta y registro de llaves SSH
 │   └── logging/configurador.py           # Log de inicio/fin de proceso
 │
-└── interfaces/cli/                # Punto de entrada
+└── interfaces/cli/                # Puntos de entrada
     ├── argumentos.py              # Definición de argumentos
     ├── contenedor.py              # Raíz de composición (inyección de dependencias)
-    └── main.py                    # main()
+    ├── main.py                    # Extracción y entrega del reporte
+    └── registrar_host_key.py      # Registro de la llave del servidor SFTP
 ```
 
 **Regla de dependencias:** `interfaces → application → domain`, e
@@ -216,13 +219,191 @@ Códigos de salida: `0` correcto · `1` error · `130` interrumpido.
 
 ## 4. Docker
 
-```bash
-# Construir
-docker compose build
+Con Docker no hace falta instalar Python ni las dependencias en el servidor:
+todo queda dentro de la imagen. Es la vía recomendada cuando no se tienen
+permisos para instalar paquetes en la máquina.
 
-# Ejecutar (los argumentos van después del nombre del servicio)
+### Puesta en marcha en un servidor Linux
+
+```bash
+git clone -b claude/tracking-goals-api-invoker-8nhx0x \
+    https://github.com/gtoro22/pmo_api.git
+cd pmo_api
+
+cp .env.example .env
+nano .env                      # completar token y datos del SFTP
+
+# Las carpetas deben existir y pertenecer al usuario del contenedor (uid 1000)
+mkdir -p output logs
+sudo chown -R 1000:1000 output logs
+
+docker compose build
+docker compose run --rm tracking-goals --todas-las-paginas
+```
+
+El Excel y el log aparecen en `./output` y `./logs` del host.
+
+> Si prefiere que los archivos queden con su propio usuario en lugar del uid
+> 1000, exporte `DOCKER_UID=$(id -u)` y `DOCKER_GID=$(id -g)` antes de
+> `docker compose run`; el `docker-compose.yml` los toma de ahí.
+
+### Uso diario
+
+```bash
+# Los argumentos van después del nombre del servicio
+docker compose run --rm tracking-goals --todas-las-paginas
 docker compose run --rm tracking-goals --project 2026 --identity 5555553333
-docker compose run --rm tracking-goals --project 2026 --todas-las-paginas
+docker compose run --rm tracking-goals --help
+```
+
+Programarlo cada día a las 6:00 con cron (`crontab -e`):
+
+```cron
+0 6 * * * cd /ruta/a/pmo_api && /usr/bin/docker compose run --rm tracking-goals --todas-las-paginas >> logs/cron.log 2>&1
+```
+
+### Si el build falla con «Network is unreachable»
+
+```
+ERROR: Could not find a version that satisfies the requirement requests==2.32.3
+Failed to establish a new connection: [Errno 101] Network is unreachable
+```
+
+Significa que el **contenedor de build** no alcanza PyPI, aunque el host sí haya
+descargado la imagen base. Es habitual en redes corporativas donde la red bridge
+de Docker no tiene salida. Tres alternativas, de más simple a más robusta:
+
+**1. Construir usando la red del host**
+
+```bash
+docker build --network=host -t tracking-goals-invoker:1.0.0 .
+docker compose run --rm --no-build tracking-goals --todas-las-paginas
+```
+
+**2. Pasar el proxy corporativo al build**, si la salida es por proxy:
+
+```bash
+docker build \
+  --build-arg HTTP_PROXY=$HTTP_PROXY \
+  --build-arg HTTPS_PROXY=$HTTPS_PROXY \
+  -t tracking-goals-invoker:1.0.0 .
+```
+
+**3. Instalar desde wheels descargados en el host** (funciona siempre que el
+host alcance PyPI, sin importar la red del contenedor):
+
+```bash
+python3 -m venv .venv
+.venv/bin/pip download -r requirements.txt -d wheels
+
+docker compose -f docker-compose.offline.yml build
+docker compose -f docker-compose.offline.yml run --rm tracking-goals --todas-las-paginas
+```
+
+`Dockerfile.offline` instala con `--no-index --find-links=/wheels`, así que el
+build no intenta ninguna conexión. La carpeta `wheels/` pesa unos 8 MB y está en
+`.gitignore`: se regenera cuando cambien las dependencias.
+
+### Servidor sin acceso a internet en absoluto
+
+Si el host tampoco alcanza Docker Hub ni PyPI, construya en otra máquina y
+transfiera la imagen ya armada:
+
+```bash
+# En la máquina con internet
+docker compose build
+docker save tracking-goals-invoker:1.0.0 | gzip > tracking-goals.tar.gz
+
+# Copiar el .tar.gz al servidor, y allí:
+gunzip -c tracking-goals.tar.gz | docker load
+
+# Ejecutar sin volver a construir (usa la imagen ya cargada)
+docker compose run --rm --no-build tracking-goals --todas-las-paginas
+```
+
+### Servidor sin pip, sin venv y sin salida a PyPI
+
+Es el caso más restrictivo: `pip install` falla por PEP 668, `python3 -m venv`
+falla porque falta `python3-venv`, y ni el host ni el contenedor alcanzan PyPI.
+Se resuelve llevando las dependencias ya descomprimidas y apuntando
+`PYTHONPATH` a ellas. **No requiere pip, ni entorno virtual, ni permisos de
+administrador en el servidor.**
+
+En una máquina con internet (sirve la de escritorio, aunque sea Windows),
+descargar los wheels de **Linux** y descomprimirlos:
+
+```bash
+pip download -r requirements.txt -d wheels \
+    --only-binary=:all: --python-version 3.11 \
+    --platform manylinux_2_17_x86_64 \
+    --platform manylinux_2_28_x86_64 \
+    --platform manylinux_2_34_x86_64
+
+python -c "import zipfile,glob,sys; [zipfile.ZipFile(w).extractall('libs') for w in glob.glob('wheels/*.whl')]"
+```
+
+Copiar la carpeta `libs/` resultante (unos 27 MB) al servidor, junto al
+proyecto, y ejecutar:
+
+```bash
+PYTHONPATH=libs python3 main.py --todas-las-paginas
+```
+
+Para cron:
+
+```cron
+0 6 * * * cd /ruta/a/pmo_api && PYTHONPATH=libs /usr/bin/python3 main.py --todas-las-paginas >> logs/cron.log 2>&1
+```
+
+`libs/` está en `.gitignore`: se regenera cuando cambien las dependencias.
+
+> Si solo se usa FTP o FTPS (no SFTP), `paramiko` no hace falta y bastan los
+> tres paquetes de Python puro, que son unos pocos MB.
+
+### Instalación con paquetes del sistema
+
+Si se tiene `sudo` y el servidor alcanza los repositorios de Debian/Ubuntu
+—habitual incluso cuando PyPI está bloqueado, porque suele haber un espejo
+interno—, es la vía más limpia:
+
+```bash
+sudo apt install python3-requests python3-openpyxl python3-paramiko python3-dotenv
+
+python3 main.py --todas-las-paginas
+```
+
+No hace falta pip ni entorno virtual. Las versiones que trae Debian 12 son más
+antiguas que las fijadas en `requirements.txt` (requests 2.28, openpyxl 3.0.9,
+paramiko 2.12, python-dotenv 0.21), pero el invocador es compatible con ellas:
+la suite de 68 pruebas pasa completa contra esas versiones.
+
+### Alternativa sin Docker: entorno virtual
+
+En Debian/Ubuntu, `pip install` contra el Python del sistema falla con
+`externally-managed-environment` (PEP 668). **No hace falta sudo**: un entorno
+virtual lo resuelve y es la vía que recomienda el propio mensaje de error.
+
+```bash
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+
+.venv/bin/python main.py --todas-las-paginas
+```
+
+No es necesario activar el entorno: basta invocar `.venv/bin/python`. Para cron:
+
+```cron
+0 6 * * * cd /ruta/a/pmo_api && .venv/bin/python main.py --todas-las-paginas >> logs/cron.log 2>&1
+```
+
+> Si `python3 -m venv` falla por `ensurepip`, falta el paquete del sistema:
+> `sudo apt install python3-venv`.
+
+### Actualizar a una versión nueva del código
+
+```bash
+git pull
+docker compose build
 ```
 
 Sin compose:
@@ -239,6 +420,29 @@ docker run --rm --env-file .env ^
 
 Los volúmenes `./output` y `./logs` exponen el Excel y los logs en el host.
 La imagen corre con un usuario sin privilegios (`invoker`, uid 1000).
+
+### Entrega por SFTP desde el contenedor
+
+El contenedor no tiene `~/.ssh/known_hosts`, así que con la verificación de host
+key activada (el valor por defecto) hay que montarlo:
+
+```bash
+mkdir -p .ssh
+ssh-keyscan -p 22 172.20.1.65 > .ssh/known_hosts
+```
+
+Descomentar el volumen correspondiente en `docker-compose.yml` y añadir al `.env`:
+
+```dotenv
+ENVIO_KNOWN_HOSTS=/app/.ssh/known_hosts
+```
+
+Si autentica con llave privada, montarla igual y apuntar
+`ENVIO_LLAVE_PRIVADA=/app/.ssh/id_ed25519`.
+
+Sobre la red: un destino en la LAN (por ejemplo `172.20.1.65`) es alcanzable
+desde el contenedor con la red bridge por defecto. Si el servidor SFTP corre en
+la **misma máquina** que Docker, usar `host.docker.internal` en `ENVIO_HOST`.
 
 ---
 
@@ -308,16 +512,39 @@ python main.py --project 2026 --enviar
 ### Seguridad
 
 `ENVIO_VERIFICAR_HOST_KEY=true` (el valor por defecto) exige que la llave del
-servidor SFTP esté en `known_hosts`; si no está, la conexión se rechaza. Para
-registrarla:
+servidor SFTP esté en `known_hosts`; si no está, la conexión se rechaza con:
 
-```bash
-ssh-keyscan -p 22 sftp.miempresa.co >> ~/.ssh/known_hosts
+```
+ErrorDeEnvio: Fallo de SSH/SFTP con 172.20.1.65:
+Server '[172.20.1.65]:4422' not found in known_hosts
 ```
 
-o apuntar `ENVIO_KNOWN_HOSTS` a un archivo propio. Ponerlo en `false` acepta
-cualquier llave y deja la conexión expuesta a suplantación del servidor: el log
-lo advierte en cada ejecución.
+Para registrarla, el proyecto trae un segundo punto de entrada que toma el host y
+el puerto del `.env`:
+
+```bash
+python3 registrar_host_key.py
+```
+
+Imprime el tipo de llave y su huella SHA256 —**contrástela con el administrador
+del servidor antes de confiar en ella**— y la guarda en el archivo indicado por
+`ENVIO_KNOWN_HOSTS`, o en `~/.ssh/known_hosts` si esa variable está vacía.
+Acepta `--host`, `--puerto` y `--salida` para casos puntuales.
+
+La lógica vive en `infrastructure/transferencia/registro_host_keys.py` y el punto
+de entrada en `interfaces/cli/registrar_host_key.py`, siguiendo la misma
+separación por capas que el resto del proyecto. Con el paquete instalado también
+está disponible como comando `tracking-goals-host-key`.
+
+Equivale a `ssh-keyscan -p <puerto> <host> >> ~/.ssh/known_hosts`, pero usa
+paramiko, así que sirve en servidores sin el cliente de OpenSSH instalado.
+
+El puerto importa: OpenSSH identifica los servidores que no usan el 22 con el
+formato `[host]:puerto`, y una entrada registrada para el puerto 22 **no** sirve
+para el 4422. La herramienta lo maneja automáticamente.
+
+Poner `ENVIO_VERIFICAR_HOST_KEY=false` acepta cualquier llave y deja la conexión
+expuesta a suplantación del servidor; el log lo advierte en cada ejecución.
 
 El protocolo `ftp` no cifra nada — credenciales y archivo viajan en claro, y el
 log lo advierte. Prefiera `sftp` o `ftps`.
@@ -376,7 +603,52 @@ Dos advertencias sobre nombres parecidos:
 
 ---
 
-## 7. Logging
+## 7. Programación con cron
+
+### Forma directa
+
+```cron
+LANG=C.UTF-8
+0 6 * * * cd /home/usuario/pmo_api && /usr/bin/python3 main.py --todas-las-paginas >> logs/cron.log 2>&1
+```
+
+El `cd` es obligatorio: cron arranca en `$HOME`, y el `.env`, `output/` y
+`logs/` se resuelven desde el directorio actual. La ruta de `python3` debe ser
+absoluta porque el `PATH` de cron es mínimo.
+
+Si las dependencias se cargan con `PYTHONPATH` (ver sección 4), indicarlo en la
+misma línea:
+
+```cron
+0 6 * * * cd /home/usuario/pmo_api && PYTHONPATH=libs /usr/bin/python3 main.py --todas-las-paginas >> logs/cron.log 2>&1
+```
+
+### Recibir aviso cuando falle
+
+Con `MAILTO` configurado, cron envía un correo con la salida cuando el comando
+termina con código distinto de cero. El invocador devuelve `1` ante cualquier
+error, así que basta con no redirigir la salida:
+
+```cron
+MAILTO=gabriel@miempresa.co
+0 6 * * * cd /home/usuario/pmo_api && /usr/bin/python3 main.py --todas-las-paginas
+```
+
+Sin servidor de correo, revisar el log del día en `LOG_DIR`: cada ejecución
+cierra con `FINALIZADO CORRECTAMENTE` o `FINALIZADO CON ERRORES`.
+
+### Verificar antes de programar
+
+```bash
+# Simula el entorno mínimo de cron: sin variables y desde otro directorio
+cd / && env -i PATH=/usr/bin:/bin /bin/sh -c \
+    'cd /home/usuario/pmo_api && /usr/bin/python3 main.py --todas-las-paginas'
+echo "codigo: $?"
+```
+
+---
+
+## 8. Logging
 
 Cada ejecución escribe en consola y en `LOG_DIR/tracking-goals-invoker_<fecha>.log`,
 registrando el inicio del proceso, el endpoint invocado, el criterio de consulta,
@@ -393,21 +665,21 @@ el avance por página y un resumen final. El token se registra **enmascarado**.
 
 ---
 
-## 8. Pruebas
+## 9. Pruebas
 
 ```bash
 pip install -r requirements-dev.txt
 pytest -q
 ```
 
-66 pruebas cubren el mapeo del JSON del documento técnico, el aplanado, el
+84 pruebas cubren el mapeo del JSON del documento técnico, el aplanado, el
 criterio de consulta, la construcción del endpoint, el cliente HTTP (401, 400,
 JSON inválido, reintento ante 5xx), la exportación a Excel y el flujo del CLI,
 incluida la ejecución de `main.py` sin el paquete instalado.
 
 ---
 
-## 9. Manejo de errores
+## 10. Manejo de errores
 
 | Situación | Excepción | Código de salida |
 |-----------|-----------|------------------|

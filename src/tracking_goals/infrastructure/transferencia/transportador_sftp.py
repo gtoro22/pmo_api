@@ -22,7 +22,15 @@ class TransportadorSftp(TransportadorArchivos):
         self._config = config
 
     def enviar(self, archivo: Path) -> ResultadoEnvio:
-        import paramiko  # se importa aqui para no exigir la libreria si no se usa
+        # Se importa aqui para no exigir la libreria cuando el envio no se usa.
+        # La fabrica ya lo verifico al armar el contenedor; esto cubre el caso de
+        # instanciar el adaptador directamente.
+        from tracking_goals.infrastructure.transferencia.fabrica import (
+            verificar_dependencias_sftp,
+        )
+
+        verificar_dependencias_sftp()
+        import paramiko
 
         cfg = self._config
         destino = PurePosixPath(cfg.directorio_remoto) / (cfg.nombre_remoto or archivo.name)
