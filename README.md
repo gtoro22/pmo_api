@@ -240,6 +240,29 @@ docker run --rm --env-file .env ^
 Los volúmenes `./output` y `./logs` exponen el Excel y los logs en el host.
 La imagen corre con un usuario sin privilegios (`invoker`, uid 1000).
 
+### Entrega por SFTP desde el contenedor
+
+El contenedor no tiene `~/.ssh/known_hosts`, así que con la verificación de host
+key activada (el valor por defecto) hay que montarlo:
+
+```bash
+mkdir -p .ssh
+ssh-keyscan -p 22 172.20.1.65 > .ssh/known_hosts
+```
+
+Descomentar el volumen correspondiente en `docker-compose.yml` y añadir al `.env`:
+
+```dotenv
+ENVIO_KNOWN_HOSTS=/app/.ssh/known_hosts
+```
+
+Si autentica con llave privada, montarla igual y apuntar
+`ENVIO_LLAVE_PRIVADA=/app/.ssh/id_ed25519`.
+
+Sobre la red: un destino en la LAN (por ejemplo `172.20.1.65`) es alcanzable
+desde el contenedor con la red bridge por defecto. Si el servidor SFTP corre en
+la **misma máquina** que Docker, usar `host.docker.internal` en `ENVIO_HOST`.
+
 ---
 
 ## 5. Entrega remota del Excel (SFTP / FTP / FTPS)
@@ -400,7 +423,7 @@ pip install -r requirements-dev.txt
 pytest -q
 ```
 
-66 pruebas cubren el mapeo del JSON del documento técnico, el aplanado, el
+68 pruebas cubren el mapeo del JSON del documento técnico, el aplanado, el
 criterio de consulta, la construcción del endpoint, el cliente HTTP (401, 400,
 JSON inválido, reintento ante 5xx), la exportación a Excel y el flujo del CLI,
 incluida la ejecución de `main.py` sin el paquete instalado.

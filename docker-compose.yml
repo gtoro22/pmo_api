@@ -5,12 +5,22 @@ services:
       dockerfile: Dockerfile
     image: tracking-goals-invoker:1.0.0
     container_name: tracking-goals-invoker
-    # Los secretos y el endpoint base se toman del archivo .env
+    # Los secretos, el endpoint base y los datos del servidor SFTP/FTP
+    # se toman del archivo .env
     env_file:
       - .env
     volumes:
       - ./output:/app/output
       - ./logs:/app/logs
+      # Entrega por SFTP con verificacion de host key (el valor por defecto):
+      # el contenedor no tiene un known_hosts propio, asi que hay que montarlo
+      # y apuntar ENVIO_KNOWN_HOSTS=/app/.ssh/known_hosts en el .env.
+      # Generarlo con:  ssh-keyscan -p 22 <host> > .ssh/known_hosts
+      # - ./.ssh/known_hosts:/app/.ssh/known_hosts:ro
+      #
+      # Autenticacion por llave privada en lugar de contrasena
+      # (ENVIO_LLAVE_PRIVADA=/app/.ssh/id_ed25519):
+      # - ./.ssh/id_ed25519:/app/.ssh/id_ed25519:ro
     # Sobreescribible desde la linea de comandos:
     #   docker compose run --rm tracking-goals --project 2026 --todas-las-paginas
     command: ["--help"]
