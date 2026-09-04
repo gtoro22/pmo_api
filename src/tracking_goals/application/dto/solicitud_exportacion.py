@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from tracking_goals.application.ports.transportador_archivos import ResultadoEnvio
 from tracking_goals.domain.value_objects.criterio_consulta import CriterioConsulta
 
 
@@ -15,6 +16,8 @@ class SolicitudExportacion:
     criterio: CriterioConsulta
     destino: Path
     todas_las_paginas: bool = False
+    # None = usar lo definido en el .env; True/False = forzar desde el CLI
+    enviar: bool | None = None
 
 
 @dataclass(frozen=True)
@@ -29,3 +32,4 @@ class ResumenEjecucion:
     total_paginas_servicio: int | None
     next_updated_since: str | None
     status: str
+    envio: ResultadoEnvio

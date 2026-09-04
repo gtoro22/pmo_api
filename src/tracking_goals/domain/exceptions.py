@@ -29,3 +29,7 @@ class RespuestaInvalida(ErrorDeConsulta):
 
 class ErrorDeExportacion(ErrorDeDominio):
     """Fallo al generar el archivo de salida."""
+
+
+class ErrorDeEnvio(ErrorDeDominio):
+    """Fallo al entregar el archivo en el destino remoto (SFTP / FTP)."""

@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import logging
 import sys
+from dataclasses import replace
 
 from tracking_goals.application.dto.solicitud_exportacion import ResumenEjecucion
 from tracking_goals.domain.exceptions import ErrorDeDominio
-from tracking_goals.infrastructure.config.settings import cargar_settings
+from tracking_goals.infrastructure.config.settings import cargar_settings, habilitar_envio
 from tracking_goals.infrastructure.logging.configurador import (
     NOMBRE_PROCESO,
     configurar_logging,
@@ -44,6 +45,12 @@ def main(argv: list[str] | None = None) -> int:
 
     contenedor = None
     try:
+        # `--enviar` activa la entrega remota para esta ejecucion; los datos de
+        # conexion se siguen leyendo del .env y se validan antes de consultar.
+        if argumentos.enviar is True:
+            settings = replace(settings, envio=habilitar_envio(settings.envio))
+        logger.info("Entrega remota     : %s", settings.envio.describir())
+
         solicitud = construir_solicitud(argumentos, settings)
         logger.info("Criterio           : %s", solicitud.criterio.describir())
         logger.info("Archivo de salida  : %s", solicitud.destino)
@@ -82,6 +89,7 @@ def _reportar(logger: logging.Logger, resumen: ResumenEjecucion) -> None:
     logger.info("  Filas exportadas         : %s", resumen.filas)
     logger.info("  next_updated_since       : %s", resumen.next_updated_since)
     logger.info("  Archivo Excel            : %s", resumen.archivo.resolve())
+    logger.info("  Entrega remota           : %s", resumen.envio.describir())
 
 
 if __name__ == "__main__":
