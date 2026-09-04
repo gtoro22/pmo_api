@@ -318,6 +318,56 @@ gunzip -c tracking-goals.tar.gz | docker load
 docker compose run --rm --no-build tracking-goals --todas-las-paginas
 ```
 
+### Servidor sin pip, sin venv y sin salida a PyPI
+
+Es el caso más restrictivo: `pip install` falla por PEP 668, `python3 -m venv`
+falla porque falta `python3-venv`, y ni el host ni el contenedor alcanzan PyPI.
+Se resuelve llevando las dependencias ya descomprimidas y apuntando
+`PYTHONPATH` a ellas. **No requiere pip, ni entorno virtual, ni permisos de
+administrador en el servidor.**
+
+En una máquina con internet (sirve la de escritorio, aunque sea Windows):
+
+```bash
+bash herramientas/preparar_dependencias.sh
+```
+
+Descarga los wheels de **Linux** —independientemente del sistema donde se
+ejecute— y los descomprime en `libs/` (unos 27 MB). Copiar esa carpeta al
+servidor, junto al proyecto, y ejecutar:
+
+```bash
+PYTHONPATH=libs python3 main.py --todas-las-paginas
+```
+
+Para cron:
+
+```cron
+0 6 * * * cd /ruta/a/pmo_api && PYTHONPATH=libs /usr/bin/python3 main.py --todas-las-paginas >> logs/cron.log 2>&1
+```
+
+`libs/` está en `.gitignore`: se regenera cuando cambien las dependencias.
+
+> Si solo se usa FTP o FTPS (no SFTP), `paramiko` no hace falta y bastan los
+> tres paquetes de Python puro, que son unos pocos MB.
+
+### Instalación con paquetes del sistema
+
+Si se tiene `sudo` y el servidor alcanza los repositorios de Debian/Ubuntu
+—habitual incluso cuando PyPI está bloqueado, porque suele haber un espejo
+interno—, es la vía más limpia:
+
+```bash
+sudo apt install python3-requests python3-openpyxl python3-paramiko python3-dotenv
+
+python3 main.py --todas-las-paginas
+```
+
+No hace falta pip ni entorno virtual. Las versiones que trae Debian 12 son más
+antiguas que las fijadas en `requirements.txt` (requests 2.28, openpyxl 3.0.9,
+paramiko 2.12, python-dotenv 0.21), pero el invocador es compatible con ellas:
+la suite de 68 pruebas pasa completa contra esas versiones.
+
 ### Alternativa sin Docker: entorno virtual
 
 En Debian/Ubuntu, `pip install` contra el Python del sistema falla con
