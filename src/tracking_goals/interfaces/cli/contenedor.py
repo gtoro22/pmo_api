@@ -16,6 +16,7 @@ from tracking_goals.infrastructure.http.endpoints import Endpoints
 from tracking_goals.infrastructure.http.repositorio_objetivos_api import (
     RepositorioObjetivosApi,
 )
+from tracking_goals.infrastructure.transferencia.fabrica import construir_transportador
 
 
 @dataclass
@@ -29,10 +30,12 @@ class Contenedor:
         self.cliente = ClienteHttpAmagi(self.settings)
         self.repositorio = RepositorioObjetivosApi(self.cliente, self.endpoints)
         self.consultar_objetivos = ConsultarObjetivos(self.repositorio)
+        self.transportador = construir_transportador(self.settings.envio)
         self.exportar_objetivos = ExportarObjetivosExcel(
             consultar_objetivos=self.consultar_objetivos,
             aplanador=AplanadorObjetivos(),
             exportador=ExportadorExcel(),
+            transportador=self.transportador,
         )
 
     def cerrar(self) -> None:

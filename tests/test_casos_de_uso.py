@@ -19,6 +19,7 @@ from tracking_goals.domain.repositories.repositorio_objetivos import Repositorio
 from tracking_goals.domain.services.aplanador_objetivos import AplanadorObjetivos
 from tracking_goals.domain.value_objects.criterio_consulta import CriterioConsulta
 from tracking_goals.infrastructure.exportacion.exportador_excel import ExportadorExcel
+from tracking_goals.infrastructure.transferencia.transportador_nulo import TransportadorNulo
 
 
 class RepositorioEnMemoria(RepositorioObjetivos):
@@ -79,6 +80,7 @@ def test_exportacion_completa_genera_resumen(tmp_path: Path):
         consultar_objetivos=ConsultarObjetivos(repositorio),
         aplanador=AplanadorObjetivos(),
         exportador=ExportadorExcel(),
+        transportador=TransportadorNulo(),
     )
 
     destino = tmp_path / "reporte.xlsx"
@@ -91,6 +93,7 @@ def test_exportacion_completa_genera_resumen(tmp_path: Path):
     assert resumen.paginas_consultadas == 1
     assert resumen.next_updated_since == "2026-07-29T10:40:00-05:00"
     assert resumen.status == "ok"
+    assert resumen.envio.enviado is False
 
 
 def test_error_del_repositorio_se_propaga():

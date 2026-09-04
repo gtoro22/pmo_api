@@ -14,6 +14,7 @@ los parámetros del JSON de salida.
 - **Log de inicio de proceso** en consola y archivo por ejecución.
 - **Excel** con la jerarquía usuario → evaluación → perspectiva → objetivo aplanada,
   incluyendo la sección `meta` y el `status`.
+- **Entrega automática por SFTP, FTP o FTPS**, habilitable desde el `.env`.
 
 ---
 
@@ -44,7 +45,8 @@ src/tracking_goals/
 │   │   ├── consultar_objetivos.py        # Consulta (con paginación opcional)
 │   │   └── exportar_objetivos_excel.py   # Consulta + aplanado + exportación
 │   ├── ports/
-│   │   └── exportador_registros.py       # PUERTO de escritura del reporte
+│   │   ├── exportador_registros.py       # PUERTO de escritura del reporte
+│   │   └── transportador_archivos.py     # PUERTO de entrega remota
 │   └── dto/
 │       └── solicitud_exportacion.py      # SolicitudExportacion / ResumenEjecucion
 │
@@ -56,6 +58,11 @@ src/tracking_goals/
 │   │   ├── mapeadores.py                 # JSON → dominio (anticorruption layer)
 │   │   └── repositorio_objetivos_api.py  # Implementación del puerto
 │   ├── exportacion/exportador_excel.py   # Implementación del puerto (openpyxl)
+│   ├── transferencia/                    # Implementaciones del puerto de entrega
+│   │   ├── fabrica.py                    #   elige el adaptador según el .env
+│   │   ├── transportador_sftp.py         #   SFTP (paramiko)
+│   │   ├── transportador_ftp.py          #   FTP y FTPS (ftplib)
+│   │   └── transportador_nulo.py         #   envío deshabilitado (Null Object)
 │   └── logging/configurador.py           # Log de inicio/fin de proceso
 │
 └── interfaces/cli/                # Punto de entrada
@@ -105,7 +112,28 @@ AMAGI_API_TOKEN=su-bearer-token
 | `LOG_DIR` | Carpeta de logs | `logs` |
 | `OUTPUT_DIR` | Carpeta de salida de los Excel | `output` |
 
-> El archivo `.env` está en `.gitignore`: **nunca** se versiona el token.
+Entrega remota (ver sección 5):
+
+| Variable | Descripción | Defecto |
+|----------|-------------|---------|
+| `ENVIO_HABILITADO` | Interruptor principal del envío | `false` |
+| `ENVIO_PROTOCOLO` | `sftp` · `ftp` · `ftps` | `sftp` |
+| `ENVIO_HOST` | Servidor destino | — |
+| `ENVIO_PUERTO` | Puerto | `22` sftp · `21` ftp/ftps |
+| `ENVIO_USUARIO` | Usuario | — |
+| `ENVIO_PASSWORD` | Contraseña | — |
+| `ENVIO_LLAVE_PRIVADA` | Ruta a la llave privada (alternativa a la contraseña, solo sftp) | — |
+| `ENVIO_LLAVE_PASSPHRASE` | Passphrase de la llave | — |
+| `ENVIO_DIRECTORIO_REMOTO` | Carpeta destino en el servidor | `.` |
+| `ENVIO_NOMBRE_REMOTO` | Nombre fijo remoto. Vacío conserva el nombre con fecha | *(vacío)* |
+| `ENVIO_CREAR_DIRECTORIO` | Crea la carpeta remota y sus padres si no existen | `true` |
+| `ENVIO_TIMEOUT` | Timeout de conexión y transferencia (segundos) | `30` |
+| `ENVIO_VERIFICAR_HOST_KEY` | Exige que la llave del servidor esté en `known_hosts` | `true` |
+| `ENVIO_KNOWN_HOSTS` | `known_hosts` propio. Vacío usa el del sistema | *(vacío)* |
+| `ENVIO_FTP_PASIVO` | Modo pasivo (solo ftp/ftps) | `true` |
+
+> El archivo `.env` está en `.gitignore`: **nunca** se versionan el token ni las
+> credenciales del servidor de archivos.
 
 ---
 
@@ -177,6 +205,8 @@ python -m tracking_goals --project 2026
 | `--per-page` | Usuarios por página |
 | `--todas-las-paginas` / `--all-pages` | Recorre hasta `total_pages` y consolida |
 | `--salida`, `-o` | Ruta del `.xlsx` a generar |
+| `--enviar` | Fuerza el envío remoto aunque `ENVIO_HABILITADO` sea `false` |
+| `--no-enviar` | Omite el envío aunque `ENVIO_HABILITADO` sea `true` |
 | `--log-level` | Nivel de detalle del log |
 | `--env-file` | Ruta alternativa del `.env` |
 
@@ -212,7 +242,89 @@ La imagen corre con un usuario sin privilegios (`invoker`, uid 1000).
 
 ---
 
-## 5. Salida en Excel
+## 5. Entrega remota del Excel (SFTP / FTP / FTPS)
+
+Una vez generado el archivo, el invocador puede subirlo a un servidor. Está
+**deshabilitado por defecto**: con `ENVIO_HABILITADO=false` el Excel solo queda
+en disco y ninguna otra variable de la sección se lee.
+
+### Ejemplo SFTP con contraseña
+
+```dotenv
+ENVIO_HABILITADO=true
+ENVIO_PROTOCOLO=sftp
+ENVIO_HOST=sftp.miempresa.co
+ENVIO_USUARIO=integraciones
+ENVIO_PASSWORD=su-contraseña
+ENVIO_DIRECTORIO_REMOTO=/reportes/objetivos
+```
+
+### Ejemplo SFTP con llave privada
+
+```dotenv
+ENVIO_HABILITADO=true
+ENVIO_PROTOCOLO=sftp
+ENVIO_HOST=sftp.miempresa.co
+ENVIO_USUARIO=integraciones
+ENVIO_LLAVE_PRIVADA=C:\claves\integraciones_id_ed25519
+ENVIO_LLAVE_PASSPHRASE=
+ENVIO_DIRECTORIO_REMOTO=/reportes/objetivos
+```
+
+### Ejemplo FTPS
+
+```dotenv
+ENVIO_HABILITADO=true
+ENVIO_PROTOCOLO=ftps
+ENVIO_HOST=ftp.miempresa.co
+ENVIO_USUARIO=integraciones
+ENVIO_PASSWORD=su-contraseña
+ENVIO_DIRECTORIO_REMOTO=/entrantes
+ENVIO_FTP_PASIVO=true
+```
+
+### Comportamiento
+
+- El archivo **siempre se conserva en local**, aunque el envío falle.
+- Si `ENVIO_CREAR_DIRECTORIO=true`, la carpeta remota y sus padres se crean.
+- Terminada la transferencia se compara el tamaño remoto contra el local; si no
+  coinciden, la ejecución falla en lugar de dar por buena una subida parcial.
+- `ENVIO_NOMBRE_REMOTO` permite dejar siempre el mismo nombre en el servidor
+  (útil si el consumidor lee una ruta fija). Vacío conserva el nombre con fecha.
+- La configuración se valida **al arrancar**, antes de consultar la API: si falta
+  el host o la credencial, el proceso termina sin gastar la llamada al servicio.
+
+### Anular el `.env` en una ejecución puntual
+
+```bat
+:: Genera el Excel sin subirlo, aunque el .env tenga el envío activo
+python main.py --project 2026 --no-enviar
+
+:: Sube el archivo aunque el .env tenga ENVIO_HABILITADO=false
+:: (los datos de conexión deben estar igualmente en el .env)
+python main.py --project 2026 --enviar
+```
+
+### Seguridad
+
+`ENVIO_VERIFICAR_HOST_KEY=true` (el valor por defecto) exige que la llave del
+servidor SFTP esté en `known_hosts`; si no está, la conexión se rechaza. Para
+registrarla:
+
+```bash
+ssh-keyscan -p 22 sftp.miempresa.co >> ~/.ssh/known_hosts
+```
+
+o apuntar `ENVIO_KNOWN_HOSTS` a un archivo propio. Ponerlo en `false` acepta
+cualquier llave y deja la conexión expuesta a suplantación del servidor: el log
+lo advierte en cada ejecución.
+
+El protocolo `ftp` no cifra nada — credenciales y archivo viajan en claro, y el
+log lo advierte. Prefiera `sftp` o `ftps`.
+
+---
+
+## 6. Salida en Excel
 
 Una fila por objetivo, con la jerarquía repetida y la sección `meta` incorporada
 en cada fila (49 columnas):
@@ -264,7 +376,7 @@ Dos advertencias sobre nombres parecidos:
 
 ---
 
-## 6. Logging
+## 7. Logging
 
 Cada ejecución escribe en consola y en `LOG_DIR/tracking-goals-invoker_<fecha>.log`,
 registrando el inicio del proceso, el endpoint invocado, el criterio de consulta,
@@ -281,21 +393,21 @@ el avance por página y un resumen final. El token se registra **enmascarado**.
 
 ---
 
-## 7. Pruebas
+## 8. Pruebas
 
 ```bash
 pip install -r requirements-dev.txt
 pytest -q
 ```
 
-40 pruebas cubren el mapeo del JSON del documento técnico, el aplanado, el
+66 pruebas cubren el mapeo del JSON del documento técnico, el aplanado, el
 criterio de consulta, la construcción del endpoint, el cliente HTTP (401, 400,
 JSON inválido, reintento ante 5xx), la exportación a Excel y el flujo del CLI,
 incluida la ejecución de `main.py` sin el paquete instalado.
 
 ---
 
-## 8. Manejo de errores
+## 9. Manejo de errores
 
 | Situación | Excepción | Código de salida |
 |-----------|-----------|------------------|
@@ -306,5 +418,10 @@ incluida la ejecución de `main.py` sin el paquete instalado.
 | HTTP 400 u otros 4xx | `ErrorDeConsulta` | 1 |
 | Respuesta no JSON o con estructura inesperada | `RespuestaInvalida` | 1 |
 | Fallo al escribir el Excel | `ErrorDeExportacion` | 1 |
+| Fallo de conexión, autenticación o transferencia al servidor remoto | `ErrorDeEnvio` | 1 |
 
 Los errores 429 y 5xx se reintentan automáticamente con backoff exponencial.
+
+Si el Excel se genera pero la entrega remota falla, el proceso termina con
+código 1 y el log indica la ruta local del archivo: **nunca se pierde el
+reporte por un problema del servidor de archivos**.

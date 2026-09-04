@@ -68,6 +68,24 @@ def construir_parser() -> argparse.ArgumentParser:
         type=Path,
         help="Ruta del archivo Excel a generar. Por defecto OUTPUT_DIR/tracking_goals_<fecha>.xlsx.",
     )
+    entrega = parser.add_argument_group("Entrega remota (SFTP / FTP)")
+    grupo_envio = entrega.add_mutually_exclusive_group()
+    grupo_envio.add_argument(
+        "--enviar",
+        action="store_const",
+        const=True,
+        dest="enviar",
+        help="Fuerza el envio remoto aunque ENVIO_HABILITADO sea false.",
+    )
+    grupo_envio.add_argument(
+        "--no-enviar",
+        action="store_const",
+        const=False,
+        dest="enviar",
+        help="Omite el envio remoto aunque ENVIO_HABILITADO sea true.",
+    )
+    parser.set_defaults(enviar=None)
+
     salida.add_argument(
         "--log-level",
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
@@ -96,6 +114,7 @@ def construir_solicitud(
         criterio=criterio,
         destino=argumentos.salida or _destino_por_defecto(settings),
         todas_las_paginas=argumentos.todas_las_paginas,
+        enviar=argumentos.enviar,
     )
 
 
