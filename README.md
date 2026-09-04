@@ -22,6 +22,7 @@ los parámetros del JSON de salida.
 
 ```
 main.py                            # ◄ Punto de entrada: python main.py --project 2026
+registrar_host_key.py              # ◄ Punto de entrada: registra la llave del SFTP
 src/tracking_goals/
 ├── domain/                        # Núcleo de negocio, sin dependencias externas
 │   ├── model/                     # Entidades y objetos de valor
@@ -62,13 +63,15 @@ src/tracking_goals/
 │   │   ├── fabrica.py                    #   elige el adaptador según el .env
 │   │   ├── transportador_sftp.py         #   SFTP (paramiko)
 │   │   ├── transportador_ftp.py          #   FTP y FTPS (ftplib)
-│   │   └── transportador_nulo.py         #   envío deshabilitado (Null Object)
+│   │   ├── transportador_nulo.py         #   envío deshabilitado (Null Object)
+│   │   └── registro_host_keys.py         #   consulta y registro de llaves SSH
 │   └── logging/configurador.py           # Log de inicio/fin de proceso
 │
-└── interfaces/cli/                # Punto de entrada
+└── interfaces/cli/                # Puntos de entrada
     ├── argumentos.py              # Definición de argumentos
     ├── contenedor.py              # Raíz de composición (inyección de dependencias)
-    └── main.py                    # main()
+    ├── main.py                    # Extracción y entrega del reporte
+    └── registrar_host_key.py      # Registro de la llave del servidor SFTP
 ```
 
 **Regla de dependencias:** `interfaces → application → domain`, e
@@ -326,15 +329,21 @@ Se resuelve llevando las dependencias ya descomprimidas y apuntando
 `PYTHONPATH` a ellas. **No requiere pip, ni entorno virtual, ni permisos de
 administrador en el servidor.**
 
-En una máquina con internet (sirve la de escritorio, aunque sea Windows):
+En una máquina con internet (sirve la de escritorio, aunque sea Windows),
+descargar los wheels de **Linux** y descomprimirlos:
 
 ```bash
-bash herramientas/preparar_dependencias.sh
+pip download -r requirements.txt -d wheels \
+    --only-binary=:all: --python-version 3.11 \
+    --platform manylinux_2_17_x86_64 \
+    --platform manylinux_2_28_x86_64 \
+    --platform manylinux_2_34_x86_64
+
+python -c "import zipfile,glob,sys; [zipfile.ZipFile(w).extractall('libs') for w in glob.glob('wheels/*.whl')]"
 ```
 
-Descarga los wheels de **Linux** —independientemente del sistema donde se
-ejecute— y los descomprime en `libs/` (unos 27 MB). Copiar esa carpeta al
-servidor, junto al proyecto, y ejecutar:
+Copiar la carpeta `libs/` resultante (unos 27 MB) al servidor, junto al
+proyecto, y ejecutar:
 
 ```bash
 PYTHONPATH=libs python3 main.py --todas-las-paginas
@@ -510,17 +519,22 @@ ErrorDeEnvio: Fallo de SSH/SFTP con 172.20.1.65:
 Server '[172.20.1.65]:4422' not found in known_hosts
 ```
 
-Para registrarla, el proyecto trae una herramienta que toma el host y el puerto
-del `.env`:
+Para registrarla, el proyecto trae un segundo punto de entrada que toma el host y
+el puerto del `.env`:
 
 ```bash
-python3 herramientas/registrar_host_key.py
+python3 registrar_host_key.py
 ```
 
 Imprime el tipo de llave y su huella SHA256 —**contrástela con el administrador
 del servidor antes de confiar en ella**— y la guarda en el archivo indicado por
 `ENVIO_KNOWN_HOSTS`, o en `~/.ssh/known_hosts` si esa variable está vacía.
 Acepta `--host`, `--puerto` y `--salida` para casos puntuales.
+
+La lógica vive en `infrastructure/transferencia/registro_host_keys.py` y el punto
+de entrada en `interfaces/cli/registrar_host_key.py`, siguiendo la misma
+separación por capas que el resto del proyecto. Con el paquete instalado también
+está disponible como comando `tracking-goals-host-key`.
 
 Equivale a `ssh-keyscan -p <puerto> <host> >> ~/.ssh/known_hosts`, pero usa
 paramiko, así que sirve en servidores sin el cliente de OpenSSH instalado.
@@ -602,54 +616,33 @@ El `cd` es obligatorio: cron arranca en `$HOME`, y el `.env`, `output/` y
 `logs/` se resuelven desde el directorio actual. La ruta de `python3` debe ser
 absoluta porque el `PATH` de cron es mínimo.
 
-### Con el envoltorio (recomendado)
+Si las dependencias se cargan con `PYTHONPATH` (ver sección 4), indicarlo en la
+misma línea:
 
 ```cron
-0 6 * * * /home/usuario/pmo_api/herramientas/ejecutar.sh --todas-las-paginas
-```
-
-`herramientas/ejecutar.sh` resuelve los problemas típicos del entorno de cron:
-
-- Se sitúa en la raíz del proyecto.
-- Fija `LANG=C.UTF-8` para que los acentos no rompan la salida.
-- Usa `flock`: si la ejecución anterior sigue corriendo, esta se salta en lugar
-  de acumularse.
-- Registra inicio, fin y código de salida en `logs/cron.log`.
-- Purga los Excel y los logs con más de `RETENCION_DIAS` días (90 por defecto).
-- Propaga el código de salida del invocador, para que cron pueda detectar fallos.
-
-Variables opcionales:
-
-| Variable | Descripción | Defecto |
-|----------|-------------|---------|
-| `PYTHON_BIN` | Intérprete a usar | `/usr/bin/python3` |
-| `RETENCION_DIAS` | Días que se conservan los archivos. `0` no purga | `90` |
-
-Si las dependencias se cargan con `PYTHONPATH` (ver sección 4), indicarlo en el
-crontab:
-
-```cron
-0 6 * * * PYTHONPATH=/home/usuario/pmo_api/libs /home/usuario/pmo_api/herramientas/ejecutar.sh --todas-las-paginas
+0 6 * * * cd /home/usuario/pmo_api && PYTHONPATH=libs /usr/bin/python3 main.py --todas-las-paginas >> logs/cron.log 2>&1
 ```
 
 ### Recibir aviso cuando falle
 
 Con `MAILTO` configurado, cron envía un correo con la salida cuando el comando
-termina con código distinto de cero:
+termina con código distinto de cero. El invocador devuelve `1` ante cualquier
+error, así que basta con no redirigir la salida:
 
 ```cron
 MAILTO=gabriel@miempresa.co
-0 6 * * * /home/usuario/pmo_api/herramientas/ejecutar.sh --todas-las-paginas
+0 6 * * * cd /home/usuario/pmo_api && /usr/bin/python3 main.py --todas-las-paginas
 ```
 
-Sin servidor de correo, revisar `logs/cron.log`: cada corrida cierra con
-`FIN OK` o `FIN CON ERRORES (codigo N)`.
+Sin servidor de correo, revisar el log del día en `LOG_DIR`: cada ejecución
+cierra con `FINALIZADO CORRECTAMENTE` o `FINALIZADO CON ERRORES`.
 
 ### Verificar antes de programar
 
 ```bash
 # Simula el entorno mínimo de cron: sin variables y desde otro directorio
-cd / && env -i PATH=/usr/bin:/bin /home/usuario/pmo_api/herramientas/ejecutar.sh --todas-las-paginas
+cd / && env -i PATH=/usr/bin:/bin /bin/sh -c \
+    'cd /home/usuario/pmo_api && /usr/bin/python3 main.py --todas-las-paginas'
 echo "codigo: $?"
 ```
 
@@ -679,7 +672,7 @@ pip install -r requirements-dev.txt
 pytest -q
 ```
 
-68 pruebas cubren el mapeo del JSON del documento técnico, el aplanado, el
+84 pruebas cubren el mapeo del JSON del documento técnico, el aplanado, el
 criterio de consulta, la construcción del endpoint, el cliente HTTP (401, 400,
 JSON inválido, reintento ante 5xx), la exportación a Excel y el flujo del CLI,
 incluida la ejecución de `main.py` sin el paquete instalado.

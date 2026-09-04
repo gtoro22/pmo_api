@@ -17,11 +17,19 @@ FORMATO_FECHA = "%Y-%m-%d %H:%M:%S"
 NOMBRE_PROCESO = "tracking-goals-invoker"
 
 
-def configurar_logging(nivel: str = "INFO", directorio: Path = Path("logs")) -> Path:
-    """Inicializa los handlers de consola y archivo. Devuelve la ruta del log."""
+def configurar_logging(
+    nivel: str = "INFO",
+    directorio: Path = Path("logs"),
+    nombre: str = NOMBRE_PROCESO,
+) -> Path:
+    """Inicializa los handlers de consola y archivo. Devuelve la ruta del log.
+
+    `nombre` prefija el archivo, para distinguir los logs de cada punto de
+    entrada (la extraccion y el registro de host keys, por ejemplo).
+    """
     directorio.mkdir(parents=True, exist_ok=True)
     marca = datetime.now().strftime("%Y%m%d_%H%M%S")
-    archivo = directorio / f"{NOMBRE_PROCESO}_{marca}.log"
+    archivo = directorio / f"{nombre}_{marca}.log"
 
     raiz = logging.getLogger()
     raiz.setLevel(getattr(logging, nivel.upper(), logging.INFO))
