@@ -571,7 +571,73 @@ Dos advertencias sobre nombres parecidos:
 
 ---
 
-## 7. Logging
+## 7. Programación con cron
+
+### Forma directa
+
+```cron
+LANG=C.UTF-8
+0 6 * * * cd /home/usuario/pmo_api && /usr/bin/python3 main.py --todas-las-paginas >> logs/cron.log 2>&1
+```
+
+El `cd` es obligatorio: cron arranca en `$HOME`, y el `.env`, `output/` y
+`logs/` se resuelven desde el directorio actual. La ruta de `python3` debe ser
+absoluta porque el `PATH` de cron es mínimo.
+
+### Con el envoltorio (recomendado)
+
+```cron
+0 6 * * * /home/usuario/pmo_api/herramientas/ejecutar.sh --todas-las-paginas
+```
+
+`herramientas/ejecutar.sh` resuelve los problemas típicos del entorno de cron:
+
+- Se sitúa en la raíz del proyecto.
+- Fija `LANG=C.UTF-8` para que los acentos no rompan la salida.
+- Usa `flock`: si la ejecución anterior sigue corriendo, esta se salta en lugar
+  de acumularse.
+- Registra inicio, fin y código de salida en `logs/cron.log`.
+- Purga los Excel y los logs con más de `RETENCION_DIAS` días (90 por defecto).
+- Propaga el código de salida del invocador, para que cron pueda detectar fallos.
+
+Variables opcionales:
+
+| Variable | Descripción | Defecto |
+|----------|-------------|---------|
+| `PYTHON_BIN` | Intérprete a usar | `/usr/bin/python3` |
+| `RETENCION_DIAS` | Días que se conservan los archivos. `0` no purga | `90` |
+
+Si las dependencias se cargan con `PYTHONPATH` (ver sección 4), indicarlo en el
+crontab:
+
+```cron
+0 6 * * * PYTHONPATH=/home/usuario/pmo_api/libs /home/usuario/pmo_api/herramientas/ejecutar.sh --todas-las-paginas
+```
+
+### Recibir aviso cuando falle
+
+Con `MAILTO` configurado, cron envía un correo con la salida cuando el comando
+termina con código distinto de cero:
+
+```cron
+MAILTO=gabriel@miempresa.co
+0 6 * * * /home/usuario/pmo_api/herramientas/ejecutar.sh --todas-las-paginas
+```
+
+Sin servidor de correo, revisar `logs/cron.log`: cada corrida cierra con
+`FIN OK` o `FIN CON ERRORES (codigo N)`.
+
+### Verificar antes de programar
+
+```bash
+# Simula el entorno mínimo de cron: sin variables y desde otro directorio
+cd / && env -i PATH=/usr/bin:/bin /home/usuario/pmo_api/herramientas/ejecutar.sh --todas-las-paginas
+echo "codigo: $?"
+```
+
+---
+
+## 8. Logging
 
 Cada ejecución escribe en consola y en `LOG_DIR/tracking-goals-invoker_<fecha>.log`,
 registrando el inicio del proceso, el endpoint invocado, el criterio de consulta,
@@ -588,7 +654,7 @@ el avance por página y un resumen final. El token se registra **enmascarado**.
 
 ---
 
-## 8. Pruebas
+## 9. Pruebas
 
 ```bash
 pip install -r requirements-dev.txt
@@ -602,7 +668,7 @@ incluida la ejecución de `main.py` sin el paquete instalado.
 
 ---
 
-## 9. Manejo de errores
+## 10. Manejo de errores
 
 | Situación | Excepción | Código de salida |
 |-----------|-----------|------------------|
