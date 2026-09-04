@@ -216,13 +216,71 @@ Códigos de salida: `0` correcto · `1` error · `130` interrumpido.
 
 ## 4. Docker
 
-```bash
-# Construir
-docker compose build
+Con Docker no hace falta instalar Python ni las dependencias en el servidor:
+todo queda dentro de la imagen. Es la vía recomendada cuando no se tienen
+permisos para instalar paquetes en la máquina.
 
-# Ejecutar (los argumentos van después del nombre del servicio)
+### Puesta en marcha en un servidor Linux
+
+```bash
+git clone -b claude/tracking-goals-api-invoker-8nhx0x \
+    https://github.com/gtoro22/pmo_api.git
+cd pmo_api
+
+cp .env.example .env
+nano .env                      # completar token y datos del SFTP
+
+# Las carpetas deben existir y pertenecer al usuario del contenedor (uid 1000)
+mkdir -p output logs
+sudo chown -R 1000:1000 output logs
+
+docker compose build
+docker compose run --rm tracking-goals --todas-las-paginas
+```
+
+El Excel y el log aparecen en `./output` y `./logs` del host.
+
+> Si prefiere que los archivos queden con su propio usuario en lugar del uid
+> 1000, exporte `DOCKER_UID=$(id -u)` y `DOCKER_GID=$(id -g)` antes de
+> `docker compose run`; el `docker-compose.yml` los toma de ahí.
+
+### Uso diario
+
+```bash
+# Los argumentos van después del nombre del servicio
+docker compose run --rm tracking-goals --todas-las-paginas
 docker compose run --rm tracking-goals --project 2026 --identity 5555553333
-docker compose run --rm tracking-goals --project 2026 --todas-las-paginas
+docker compose run --rm tracking-goals --help
+```
+
+Programarlo cada día a las 6:00 con cron (`crontab -e`):
+
+```cron
+0 6 * * * cd /ruta/a/pmo_api && /usr/bin/docker compose run --rm tracking-goals --todas-las-paginas >> logs/cron.log 2>&1
+```
+
+### Servidor sin acceso a internet
+
+Si el servidor no puede descargar la imagen base ni los paquetes, construya en
+una máquina que sí tenga salida y transfiera la imagen ya armada:
+
+```bash
+# En la máquina con internet
+docker compose build
+docker save tracking-goals-invoker:1.0.0 | gzip > tracking-goals.tar.gz
+
+# Copiar el .tar.gz al servidor, y allí:
+gunzip -c tracking-goals.tar.gz | docker load
+
+# Ejecutar sin volver a construir (usa la imagen ya cargada)
+docker compose run --rm --no-build tracking-goals --todas-las-paginas
+```
+
+### Actualizar a una versión nueva del código
+
+```bash
+git pull
+docker compose build
 ```
 
 Sin compose:

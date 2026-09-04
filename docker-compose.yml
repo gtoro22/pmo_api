@@ -9,6 +9,11 @@ services:
     # se toman del archivo .env
     env_file:
       - .env
+    # La imagen corre como uid 1000. En un servidor Linux, si las carpetas
+    # montadas pertenecen a otro usuario, el contenedor no puede escribir.
+    # Opciones: `sudo chown -R 1000:1000 output logs` en el host, o exportar
+    # DOCKER_UID/DOCKER_GID con su propio usuario (`id -u` / `id -g`).
+    user: "${DOCKER_UID:-1000}:${DOCKER_GID:-1000}"
     volumes:
       - ./output:/app/output
       - ./logs:/app/logs
