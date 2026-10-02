@@ -8,6 +8,11 @@ output/
 logs/
 *.xlsx
 
+# Dependencias descargadas para instalacion sin red
+# (ver herramientas/preparar_dependencias.sh y Dockerfile.offline)
+wheels/
+libs/
+
 # Python
 __pycache__/
 *.py[cod]

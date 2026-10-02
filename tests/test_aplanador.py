@@ -69,6 +69,9 @@ def test_aplana_los_campos_nuevos_del_servicio(respuesta_servicio):
     assert fila.evaluacion_fin == "2026-08-31"
     assert fila.evaluador == "Apellido1 Apellido2 Nombre1 Nombre2"
     assert fila.estado_evaluacion == "Evaluacion Finalizada"
+    assert fila.puntos_abonados == 0.0
+    assert fila.promedio_evaluacion == 78.38
+    assert fila.cumplimiento_total == 78.38
 
     # Perspectiva: peso y cumplimiento propios
     assert fila.perspectiva_peso == 100.0

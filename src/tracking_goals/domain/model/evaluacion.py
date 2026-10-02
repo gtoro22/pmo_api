@@ -27,6 +27,9 @@ class Evaluacion:
     fin: str | None = None
     evaluador: str | None = None
     estado_evaluacion: str | None = None
+    puntos_abonados: float | None = None
+    promedio_evaluacion: float | None = None
+    cumplimiento_total: float | None = None
     perspectivas: tuple[Perspectiva, ...] = field(default=())
 
     @property

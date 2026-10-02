@@ -77,6 +77,44 @@ def test_cada_protocolo_construye_su_adaptador(protocolo, esperado):
     assert isinstance(construir_transportador(config), esperado)
 
 
+def test_sin_paramiko_falla_al_armar_el_contenedor(monkeypatch):
+    """Falta de dependencia: mensaje accionable y antes de consultar la API."""
+    import builtins
+
+    importar_real = builtins.__import__
+
+    def sin_paramiko(nombre, *args, **kwargs):
+        if nombre == "paramiko":
+            raise ImportError("No module named 'paramiko'")
+        return importar_real(nombre, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", sin_paramiko)
+    config = ConfiguracionEnvio(
+        habilitado=True, protocolo="sftp", host="h", usuario="u", password="p"
+    )
+
+    with pytest.raises(ErrorDeEnvio, match="pip install -r requirements.txt"):
+        construir_transportador(config)
+
+
+def test_sin_paramiko_ftps_sigue_funcionando(monkeypatch, archivo, config_ftp):
+    """FTPS usa ftplib de la biblioteca estandar: no depende de paramiko."""
+    import builtins
+
+    importar_real = builtins.__import__
+
+    def sin_paramiko(nombre, *args, **kwargs):
+        if nombre == "paramiko":
+            raise ImportError("No module named 'paramiko'")
+        return importar_real(nombre, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", sin_paramiko)
+    monkeypatch.setattr(transportador_ftp.ftplib, "FTP_TLS", _FtpFalso)
+
+    transportador = construir_transportador(replace(config_ftp, protocolo="ftps"))
+    assert transportador.enviar(archivo).enviado is True
+
+
 def test_transportador_nulo_no_transfiere(archivo):
     resultado = TransportadorNulo().enviar(archivo)
     assert resultado.enviado is False

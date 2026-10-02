@@ -42,6 +42,9 @@ class RegistroPlano:
     evaluacion_fin: str | None = None
     evaluador: str | None = None
     estado_evaluacion: str | None = None
+    puntos_abonados: float | None = None
+    promedio_evaluacion: float | None = None
+    cumplimiento_total: float | None = None
     total_perspectivas: int | None = None
     total_objetivos: int | None = None
 

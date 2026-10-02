@@ -20,6 +20,7 @@ dev = ["pytest>=8", "responses>=0.25"]
 
 [project.scripts]
 tracking-goals = "tracking_goals.interfaces.cli.main:main"
+tracking-goals-host-key = "tracking_goals.interfaces.cli.registrar_host_key:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

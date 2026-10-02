@@ -1,0 +1,44 @@
+# Imagen para entornos donde el contenedor de build NO alcanza PyPI
+# (pip falla con "Network is unreachable" aunque el host si baje la imagen base).
+#
+# Las dependencias se instalan desde wheels ya descargados en el host:
+#
+#   python3 -m venv .venv
+#   .venv/bin/pip download -r requirements.txt -d wheels
+#   docker compose -f docker-compose.offline.yml build
+#
+# Ver README, seccion 4.
+
+FROM python:3.11-slim
+
+LABEL org.opencontainers.image.title="tracking-goals-invoker" \
+      org.opencontainers.image.description="Invocador DDD del servicio de objetivos de Amagi"
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1 \
+    TZ=America/Bogota
+
+WORKDIR /app
+
+# Dependencias desde los wheels locales: --no-index evita cualquier salida a red
+COPY requirements.txt ./
+COPY wheels/ /wheels/
+RUN pip install --no-cache-dir --no-index --find-links=/wheels -r requirements.txt \
+    && rm -rf /wheels
+
+# Codigo fuente e instalacion del paquete (habilita el comando `tracking-goals`)
+COPY pyproject.toml README.md ./
+COPY src/ ./src/
+RUN pip install --no-cache-dir --no-deps --no-build-isolation .
+
+# Volumenes de trabajo
+RUN mkdir -p /app/output /app/logs
+
+# Usuario sin privilegios
+RUN useradd --create-home --uid 1000 invoker \
+    && chown -R invoker:invoker /app
+USER invoker
+
+ENTRYPOINT ["tracking-goals"]
+CMD ["--help"]
