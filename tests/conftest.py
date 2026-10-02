@@ -116,6 +116,9 @@ def respuesta_servicio() -> dict:
                         "fin": "2026-08-31",
                         "evaluador": "Apellido1 Apellido2 Nombre1 Nombre2",
                         "estado_evaluacion": "Evaluacion Finalizada",
+                        "puntos_abonados": 0.0,
+                        "promedio_evaluacion": 78.38,
+                        "cumplimiento_total": 78.38,
                         "total_perspectivas": 1,
                         "total_objetivos": 1,
                         "perspectivas": [

@@ -554,12 +554,13 @@ log lo advierte. Prefiera `sftp` o `ftps`.
 ## 6. Salida en Excel
 
 Una fila por objetivo, con la jerarquía repetida y la sección `meta` incorporada
-en cada fila (49 columnas):
+en cada fila (52 columnas). **Todos los campos del JSON tienen columna**: una
+prueba lo verifica campo por campo contra la respuesta del servicio.
 
 | Bloque | Columnas |
 |--------|----------|
 | Usuario evaluado | `usuario_id`, `identificacion`, `nombres`, `apellidos`, `nombre_completo`, `cargo`, `nivel_cargo`, `area`, `grupo`, `localizacion`, `unidad_negocio` |
-| Evaluación | `evaluacion_id`, `proyecto`, `evaluacion_nombre`, `evaluacion_inicio`, `evaluacion_fin`, `evaluador`, `estado_evaluacion`, `total_perspectivas`, `total_objetivos` |
+| Evaluación | `evaluacion_id`, `proyecto`, `evaluacion_nombre`, `evaluacion_inicio`, `evaluacion_fin`, `evaluador`, `estado_evaluacion`, `puntos_abonados`, `promedio_evaluacion`, `cumplimiento_total`, `total_perspectivas`, `total_objetivos` |
 | Perspectiva | `perspectiva_id`, `perspectiva_nombre`, `perspectiva_peso`, `perspectiva_cumplimiento` |
 | Objetivo | `objetivo_id`, `objetivo`, `objetivo_estrategico`, `indicador_medicion`, `indicador`, `objetivo_peso`, `meta`, `minimo`, `sobresaliente`, `unidad_medida`, `tipo_calculo`, `tipo_indicador`, `periodo`, `resultado`, `cumplimiento`, `fecha_limite`, `estado_seguimientos` |
 | Metadatos | `meta_page`, `meta_per_page`, `meta_total_users`, `meta_total_pages`, `meta_updated_since`, `meta_server_time`, `meta_next_updated_since`, `status` |
@@ -568,6 +569,26 @@ en cada fila (49 columnas):
 perspectiva van prefijados (`perspectiva_peso`, `perspectiva_cumplimiento`) y el
 del objetivo se llama `objetivo_peso`. Los campos propios del objetivo (`meta`,
 `resultado`, `cumplimiento`) van sin prefijo porque el objetivo es el grano de la fila.
+
+### Cuando el servicio agregue campos
+
+`infrastructure/http/mapeadores.py` declara en `CLAVES_CONOCIDAS` el contrato que
+sabe traducir. Si la respuesta trae campos que no están ahí, cada ejecución lo
+advierte en el log:
+
+```
+WARNING | El servicio envia campos no mapeados en `evaluacion`: evaluador_correo.
+          No apareceran en el Excel hasta que se agreguen al modelo.
+```
+
+Así un cambio en la API se nota de inmediato en lugar de perder datos en
+silencio. Para incorporar un campo nuevo hay que tocar cuatro archivos, uno por
+capa:
+
+1. `domain/model/<entidad>.py` — el campo en la entidad.
+2. `domain/model/registro_plano.py` — la columna del Excel.
+3. `domain/services/aplanador_objetivos.py` — el traspaso de entidad a fila.
+4. `infrastructure/http/mapeadores.py` — la lectura del JSON y `CLAVES_CONOCIDAS`.
 
 Criterios aplicados según el documento técnico:
 
@@ -586,7 +607,7 @@ El invocador mapea **ambos** contratos, así que funciona con cualquiera de los 
 | Nivel | Campos que llegan y no están documentados |
 |-------|-------------------------------------------|
 | Usuario | `cargo`, `nivel_cargo`, `area`, `grupo`, `localizacion`, `unidad_negocio` |
-| Evaluación | `inicio`, `fin`, `evaluador`, `estado_evaluacion` |
+| Evaluación | `inicio`, `fin`, `evaluador`, `estado_evaluacion`, `puntos_abonados`, `promedio_evaluacion`, `cumplimiento_total` |
 | Perspectiva | `peso`, `cumplimiento` |
 | Objetivo | `objetivo_estrategico`, `indicador_medicion`, `peso`, `minimo`, `sobresaliente`, `periodo`, `fecha_limite`, `estado_seguimientos` |
 
@@ -672,7 +693,7 @@ pip install -r requirements-dev.txt
 pytest -q
 ```
 
-84 pruebas cubren el mapeo del JSON del documento técnico, el aplanado, el
+95 pruebas cubren el mapeo del JSON del documento técnico, el aplanado, el
 criterio de consulta, la construcción del endpoint, el cliente HTTP (401, 400,
 JSON inválido, reintento ante 5xx), la exportación a Excel y el flujo del CLI,
 incluida la ejecución de `main.py` sin el paquete instalado.

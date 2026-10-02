@@ -65,6 +65,9 @@ class AplanadorObjetivos:
             evaluacion_fin=evaluacion.fin,
             evaluador=evaluacion.evaluador,
             estado_evaluacion=evaluacion.estado_evaluacion,
+            puntos_abonados=evaluacion.puntos_abonados,
+            promedio_evaluacion=evaluacion.promedio_evaluacion,
+            cumplimiento_total=evaluacion.cumplimiento_total,
             total_perspectivas=evaluacion.total_perspectivas,
             total_objetivos=evaluacion.total_objetivos,
         )

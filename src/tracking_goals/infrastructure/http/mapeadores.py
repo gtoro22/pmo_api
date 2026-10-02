@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from tracking_goals.domain.exceptions import RespuestaInvalida
@@ -12,24 +13,84 @@ from tracking_goals.domain.model.perspectiva import Perspectiva
 from tracking_goals.domain.model.resultado_consulta import ESTADO_OK, ResultadoConsulta
 from tracking_goals.domain.model.usuario import Usuario
 
+logger = logging.getLogger(__name__)
+
+# Contrato que este mapeador sabe traducir. Si el servicio empieza a enviar
+# campos que no estan aqui, el aviso en el log lo delata: significa que hay
+# datos llegando que no terminan en el Excel.
+CLAVES_CONOCIDAS: dict[str, frozenset[str]] = {
+    "usuario": frozenset(
+        {
+            "id", "identificacion", "nombres", "apellidos", "cargo", "nivel_cargo",
+            "area", "grupo", "localizacion", "unidad_negocio", "evaluaciones",
+        }
+    ),
+    "evaluacion": frozenset(
+        {
+            "id", "proyecto", "nombre", "inicio", "fin", "evaluador",
+            "estado_evaluacion", "puntos_abonados", "promedio_evaluacion",
+            "cumplimiento_total", "total_perspectivas", "total_objetivos",
+            "perspectivas",
+        }
+    ),
+    "perspectiva": frozenset({"id", "nombre", "peso", "cumplimiento", "objetivos"}),
+    "objetivo": frozenset(
+        {
+            "id", "objetivo", "objetivo_estrategico", "indicador", "indicador_medicion",
+            "peso", "meta", "minimo", "sobresaliente", "unidad_medida", "tipo_calculo",
+            "tipo_indicador", "periodo", "resultado", "cumplimiento", "fecha_limite",
+            "estado_seguimientos",
+        }
+    ),
+    "meta": frozenset(
+        {
+            "page", "per_page", "total_users", "total_pages", "updated_since",
+            "server_time", "next_updated_since",
+        }
+    ),
+}
+
 
 class MapeadorRespuesta:
     """Convierte el cuerpo JSON de `tracking_goals` en objetos de dominio."""
+
+    def __init__(self) -> None:
+        self._desconocidas: dict[str, set[str]] = {}
 
     def a_resultado(self, cuerpo: dict[str, Any]) -> ResultadoConsulta:
         resultados = cuerpo.get("results", [])
         if not isinstance(resultados, list):
             raise RespuestaInvalida("`results` debe ser un arreglo de usuarios.")
 
+        self._desconocidas = {}
         usuarios = tuple(self._a_usuario(item) for item in resultados)
         metadatos = self._a_metadatos(cuerpo.get("meta"), len(usuarios))
         status = _texto(cuerpo.get("status")) or ESTADO_OK
+        self._avisar_campos_no_mapeados()
         return ResultadoConsulta(usuarios=usuarios, metadatos=metadatos, status=status)
+
+    # -- Deteccion de cambios en el contrato -----------------------------------
+
+    def _revisar_claves(self, nivel: str, datos: dict[str, Any]) -> None:
+        nuevas = set(datos) - CLAVES_CONOCIDAS[nivel]
+        if nuevas:
+            self._desconocidas.setdefault(nivel, set()).update(nuevas)
+
+    def _avisar_campos_no_mapeados(self) -> None:
+        """Deja constancia de los campos que el servicio envia y no se exportan."""
+        for nivel, claves in sorted(self._desconocidas.items()):
+            logger.warning(
+                "El servicio envia campos no mapeados en `%s`: %s. "
+                "No apareceran en el Excel hasta que se agreguen al modelo.",
+                nivel,
+                ", ".join(sorted(claves)),
+            )
 
     # -- Niveles ---------------------------------------------------------------
 
     def _a_usuario(self, datos: Any) -> Usuario:
         datos = _objeto(datos, "usuario")
+        self._revisar_claves("usuario", datos)
         evaluaciones = _lista(datos.get("evaluaciones"), "evaluaciones")
         return Usuario(
             id=_entero(datos.get("id")),
@@ -47,6 +108,7 @@ class MapeadorRespuesta:
 
     def _a_evaluacion(self, datos: Any) -> Evaluacion:
         datos = _objeto(datos, "evaluacion")
+        self._revisar_claves("evaluacion", datos)
         perspectivas = _lista(datos.get("perspectivas"), "perspectivas")
         return Evaluacion(
             id=_entero(datos.get("id")),
@@ -58,11 +120,15 @@ class MapeadorRespuesta:
             fin=_texto(datos.get("fin")),
             evaluador=_texto(datos.get("evaluador")),
             estado_evaluacion=_texto(datos.get("estado_evaluacion")),
+            puntos_abonados=_decimal_opcional(datos.get("puntos_abonados")),
+            promedio_evaluacion=_decimal_opcional(datos.get("promedio_evaluacion")),
+            cumplimiento_total=_decimal_opcional(datos.get("cumplimiento_total")),
             perspectivas=tuple(self._a_perspectiva(item) for item in perspectivas),
         )
 
     def _a_perspectiva(self, datos: Any) -> Perspectiva:
         datos = _objeto(datos, "perspectiva")
+        self._revisar_claves("perspectiva", datos)
         objetivos = _lista(datos.get("objetivos"), "objetivos")
         return Perspectiva(
             id=_entero(datos.get("id")),
@@ -74,6 +140,7 @@ class MapeadorRespuesta:
 
     def _a_objetivo(self, datos: Any) -> Objetivo:
         datos = _objeto(datos, "objetivo")
+        self._revisar_claves("objetivo", datos)
         return Objetivo(
             id=_entero(datos.get("id")),
             objetivo=_texto(datos.get("objetivo")) or "",
@@ -94,11 +161,11 @@ class MapeadorRespuesta:
             estado_seguimientos=_texto(datos.get("estado_seguimientos")),
         )
 
-    @staticmethod
-    def _a_metadatos(datos: Any, usuarios_recibidos: int) -> Metadatos | None:
+    def _a_metadatos(self, datos: Any, usuarios_recibidos: int) -> Metadatos | None:
         if datos is None:
             return None
         datos = _objeto(datos, "meta")
+        self._revisar_claves("meta", datos)
         return Metadatos(
             page=_entero_opcional(datos.get("page")) or 1,
             per_page=_entero_opcional(datos.get("per_page")) or usuarios_recibidos,
